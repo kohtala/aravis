@@ -446,15 +446,23 @@ gst_aravis_start (GstBaseSrc *src)
 	GError *error = NULL;
 	gboolean result = TRUE;
 	GstAravis* gst_aravis = GST_ARAVIS(src);
+	ArvCamera *orig_camera;
+	gboolean changed;
 
-	GST_LOG_OBJECT (gst_aravis, "Open camera '%s'", gst_aravis->camera_name);
+	GST_LOG_OBJECT (gst_aravis, "Open camera '%s'", gst_aravis->camera_name ? gst_aravis->camera_name : "");
 
 	GST_OBJECT_LOCK (gst_aravis);
+	orig_camera = gst_aravis->camera;
 	if (gst_aravis->camera == NULL)
 		result = gst_aravis_init_camera (gst_aravis, &error);
 
 	if (result) gst_aravis->all_caps = gst_aravis_get_all_camera_caps (gst_aravis, &error);
+	changed = gst_aravis->camera != orig_camera;
 	GST_OBJECT_UNLOCK (gst_aravis);
+
+	if (changed) {
+		g_object_notify_by_pspec (G_OBJECT (gst_aravis), properties[PROP_CAMERA]);
+	}
 
 	if (error) gst_aravis_init_error (gst_aravis, error);
 
@@ -702,19 +710,25 @@ gst_aravis_set_property (GObject * object, guint prop_id,
 	GST_DEBUG_OBJECT (gst_aravis, "setting property %s", pspec->name);
 
 	switch (prop_id) {
+		const ArvCamera *orig_camera;
+		gboolean changed;
 		case PROP_CAMERA_NAME:
 			GST_OBJECT_LOCK (gst_aravis);
-			g_free (gst_aravis->camera_name);
+			orig_camera = gst_aravis->camera;
 			/* check if we are currently active
 			   prevent setting camera and other values to something not representing the active camera */
 			if (gst_aravis->stream == NULL) {
+				g_free (gst_aravis->camera_name);
 				gst_aravis->camera_name = g_strdup (g_value_get_string (value));
 				gst_aravis_init_camera (gst_aravis, &error);
 			}
 
 			GST_LOG_OBJECT (gst_aravis, "Set camera name to %s", gst_aravis->camera_name);
+			changed = orig_camera != gst_aravis->camera;
 			GST_OBJECT_UNLOCK (gst_aravis);
 			if (error) gst_aravis_init_error (gst_aravis, error);
+			if (changed)
+				g_object_notify_by_pspec (G_OBJECT (gst_aravis), properties[PROP_CAMERA]);
 			break;
 		case PROP_GAIN:
 			GST_OBJECT_LOCK (gst_aravis);
